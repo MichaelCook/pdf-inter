@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# For scanners that have an auto-feed feature but can only scan one side.
+# Take two PDF documents and interleave their pages.  The first document is
+# the front pages, numbered low to high.  The second document is the back
+# pages, numbered high to low.
+#
+
+# This software is distributed under the "Simplified BSD license":
+#
+# Copyright Michael Cook <michael@waxrat.com>. All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+#    1. Redistributions of source code must retain the above copyright notice,
+#       this list of conditions and the following disclaimer.
+#
+#    2. Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY MICHAEL COOK ''AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
+# EVENT SHALL MICHAEL COOK OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+# INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
+# THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are
+# those of the authors and should not be interpreted as representing official
+# policies, either expressed or implied, of Michael Cook.
+
+this=${0##*/}
+
+if [ $# -ne 3 ]; then
+    echo >&2 "usage: $this fronts.pdf backs.pdf output.pdf"
+    exit 1
+fi
+
+if ! type pdftk >/dev/null; then
+    echo >&2 "$this: No pdftk, do this: sudo apt-get install pdftk"
+    exit 1
+fi
+
+tmp=~/tmp/$this-$$
+trap exit INT HUP TERM QUIT PIPE
+trap 'rm -rf $tmp' EXIT
+
+fronts="$1"; shift
+backs="$1"; shift
+output="$1"; shift
+
+rm -rf "$tmp"
+mkdir -p "$tmp"
+
+echo Extract front pages...
+pdftk "$fronts" burst output "$tmp/%04d_a.pdf" || exit
+echo Front pages: $(ls "$tmp"/*_a.pdf | wc -l)
+
+echo Extract back pages...
+pdftk "$backs" burst output "$tmp/%04d_b.pdf" || exit
+echo Back pages: $(ls "$tmp"/*_b.pdf | wc -l)
+
+echo Reorder back pages...
+pushd "$tmp" >/dev/null || exit
+  n=$(ls *_b.pdf | wc -l)
+  rename --quiet '
+    BEGIN { $n = '$n' }
+    s/^\d+_b/sprintf "%04d_c", $n--/e;
+  ' *_b.pdf || exit
+popd >/dev/null
+
+echo Combine...
+pdftk "$tmp"/*_?.pdf cat output "$output" || exit
+
+echo Wrote "$output"
