@@ -43,7 +43,7 @@ if ! type pdftk >/dev/null; then
     exit 1
 fi
 
-tmp=~/tmp/$this-$$
+tmp=/run/shm/$this-$$
 trap exit INT HUP TERM QUIT PIPE
 trap 'rm -rf $tmp' EXIT
 
